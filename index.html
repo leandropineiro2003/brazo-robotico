@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador de Brazo Robótico</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1a1a2e;
+            color: #e2e2e2;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 { color: #4ecca3; }
+
+        .container {
+            display: flex;
+            gap: 20px;
+            background: #16213e;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        canvas {
+            background: #0f3460;
+            border-radius: 10px;
+            border: 2px solid #4ecca3;
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            min-width: 250px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            border-bottom: 1px solid #4ecca344;
+            padding-bottom: 10px;
+        }
+
+        label {
+            font-size: 0.9rem;
+            margin-bottom: 5px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            cursor: pointer;
+        }
+
+        span.val {
+            color: #4ecca3;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Brazo Robótico Pro-Sim</h1>
+
+    <div class="container">
+        <canvas id="robotCanvas" width="600" height="500"></canvas>
+
+        <div class="controls">
+            <div class="control-group">
+                <label>Hombro: <span id="v1" class="val">0</span>°</label>
+                <input type="range" id="a1" min="-90" max="90" value="0">
+                <label>Velocidad Hombro</label>
+                <input type="range" id="s1" min="1" max="10" value="5">
+            </div>
+
+            <div class="control-group">
+                <label>Codo: <span id="v2" class="val">0</span>°</label>
+                <input type="range" id="a2" min="-140" max="0" value="-45">
+                <label>Velocidad Codo</label>
+                <input type="range" id="s2" min="1" max="10" value="5">
+            </div>
+
+            <div class="control-group">
+                <label>Muñeca: <span id="v3" class="val">0</span>°</label>
+                <input type="range" id="a3" min="-90" max="90" value="0">
+                <label>Velocidad Muñeca</label>
+                <input type="range" id="s3" min="1" max="10" value="5">
+            </div>
+
+            <div class="control-group">
+                <label>Pinza (Apertura): <span id="v4" class="val">20</span></label>
+                <input type="range" id="a4" min="5" max="40" value="20">
+                <label>Velocidad Pinza</label>
+                <input type="range" id="s4" min="1" max="10" value="5">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('robotCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Estado actual del brazo (ángulos actuales para suavizado)
+        let current = { h: 0, c: -45, m: 0, p: 20 };
+       
+        // Configuración de longitudes
+        const L1 = 120; // Brazo
+        const L2 = 100; // Antebrazo
+        const L3 = 40;  // Mano
+
+        function draw() {
+            // Limpiar canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Obtener valores de los inputs (objetivos)
+            const targetH = parseFloat(document.getElementById('a1').value);
+            const targetC = parseFloat(document.getElementById('a2').value);
+            const targetM = parseFloat(document.getElementById('a3').value);
+            const targetP = parseFloat(document.getElementById('a4').value);
+
+            // Obtener velocidades (0.01 a 0.1)
+            const speedH = document.getElementById('s1').value * 0.01;
+            const speedC = document.getElementById('s2').value * 0.01;
+            const speedM = document.getElementById('s3').value * 0.01;
+            const speedP = document.getElementById('s4').value * 0.01;
+
+            // Interpolar movimiento (Suavizado)
+            current.h += (targetH - current.h) * speedH;
+            current.c += (targetC - current.c) * speedC;
+            current.m += (targetM - current.m) * speedM;
+            current.p += (targetP - current.p) * speedP;
+
+            // Actualizar etiquetas de texto
+            document.getElementById('v1').innerText = Math.round(current.h);
+            document.getElementById('v2').innerText = Math.round(current.c);
+            document.getElementById('v3').innerText = Math.round(current.m);
+            document.getElementById('v4').innerText = Math.round(current.p);
+
+            // Dibujar Columna (Cuerpo)
+            ctx.fillStyle = "#393e46";
+            ctx.fillRect(50, 100, 40, 350);
+           
+            // Punto de origen (Hombro)
+            ctx.save();
+            ctx.translate(90, 150);
+           
+            // --- HOMBRO ---
+            ctx.rotate(current.h * Math.PI / 180);
+            drawLink(L1, "Hombro");
+
+            // --- CODO ---
+            ctx.translate(L1, 0);
+            ctx.rotate(current.c * Math.PI / 180);
+            drawLink(L2, "Codo");
+
+            // --- MUÑECA ---
+            ctx.translate(L2, 0);
+            ctx.rotate(current.m * Math.PI / 180);
+            drawLink(L3, "Muñeca");
+
+            // --- PINZA ---
+            ctx.translate(L3, 0);
+            drawGripper(current.p);
+
+            ctx.restore();
+
+            requestAnimationFrame(draw);
+        }
+
+        function drawLink(len, label) {
+            ctx.lineWidth = 15;
+            ctx.lineCap = "round";
+            ctx.strokeStyle = "#4ecca3";
+           
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(len, 0);
+            ctx.stroke();
+
+            // Articulación (Círculo)
+            ctx.fillStyle = "#eeeeee";
+            ctx.beginPath();
+            ctx.arc(0, 0, 8, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function drawGripper(gap) {
+            ctx.strokeStyle = "#ff4b2b";
+            ctx.lineWidth = 5;
+
+            // Dedo superior
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(10, -gap);
+            ctx.lineTo(30, -gap);
+            ctx.stroke();
+
+            // Dedo inferior
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(10, gap);
+            ctx.lineTo(30, gap);
+            ctx.stroke();
+        }
+
+        draw();
+    </script>
+</body>
+</html>
